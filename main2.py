@@ -29,6 +29,7 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
     """
     try:
         config_message = await client_websocket.recv()
+        print(f"Received config message: {config_message}")
         config_data = json.loads(config_message)
         config = config_data.get("setup", {})
 
@@ -38,36 +39,32 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
             async def send_to_gemini():
                 """Sends messages from the client websocket to the Gemini API."""
                 try:
-                  async for message in client_websocket:
-                      try:
-                          data = json.loads(message)
-                          if "realtime_input" in data:
-                              for chunk in data["realtime_input"]["media_chunks"]:
-                                  if chunk["mime_type"] == "audio/pcm":
-                                      await session.send({"mime_type": "audio/pcm", "data": chunk["data"]})
-                                      
-                                  elif chunk["mime_type"] == "image/jpeg":
-                                      await session.send({"mime_type": "image/jpeg", "data": chunk["data"]})
-                                      
-                      except Exception as e:
-                          print(f"Error sending to Gemini: {e}")
-                  print("Client connection closed (send)")
+                    async for message in client_websocket:
+                        try:
+                            data = json.loads(message)
+                            print(f"Received message from client: {data}")
+                            if "realtime_input" in data:
+                                for chunk in data["realtime_input"]["media_chunks"]:
+                                    if chunk["mime_type"] == "audio/pcm":
+                                        await session.send({"mime_type": "audio/pcm", "data": chunk["data"]})
+                                    elif chunk["mime_type"] == "image/jpeg":
+                                        await session.send({"mime_type": "image/jpeg", "data": chunk["data"]})
+                        except Exception as e:
+                            print(f"Error sending to Gemini: {e}")
+                    print("Client connection closed (send)")
                 except Exception as e:
-                     print(f"Error sending to Gemini: {e}")
+                    print(f"Error sending to Gemini: {e}")
                 finally:
-                   print("send_to_gemini closed")
-
-
+                    print("send_to_gemini closed")
 
             async def receive_from_gemini():
                 """Receives responses from the Gemini API and forwards them to the client, looping until turn is complete."""
                 try:
                     while True:
                         try:
-                            print("receiving from gemini")
+                            print("Receiving from Gemini")
                             async for response in session.receive():
-                                #first_response = True
-                                print(f"response: {response}")
+                                print(f"Response from Gemini: {response}")
                                 if response.server_content is None:
                                     print(f'Unhandled server message! - {response}')
                                     continue
@@ -75,19 +72,13 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
                                 model_turn = response.server_content.model_turn
                                 if model_turn:
                                     for part in model_turn.parts:
-                                        print(f"part: {part}")
+                                        print(f"Part: {part}")
                                         if hasattr(part, 'text') and part.text is not None:
-                                            #print(f"text: {part.text}")
                                             await client_websocket.send(json.dumps({"text": part.text}))
                                         elif hasattr(part, 'inline_data') and part.inline_data is not None:
-                                            # if first_response:
-                                            print("audio mime_type:", part.inline_data.mime_type)
-                                                #first_response = False
                                             base64_audio = base64.b64encode(part.inline_data.data).decode('utf-8')
-                                            await client_websocket.send(json.dumps({
-                                                "audio": base64_audio,
-                                            }))
-                                            print("audio received")
+                                            await client_websocket.send(json.dumps({"audio": base64_audio}))
+                                            print("Audio received")
 
                                 if response.server_content.turn_complete:
                                     print('\n<Turn complete>')
@@ -96,13 +87,12 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
                             break  # Exit the loop if the connection is closed
                         except Exception as e:
                             print(f"Error receiving from Gemini: {e}")
-                            break # exit the lo
+                            break  # Exit the loop
 
                 except Exception as e:
-                      print(f"Error receiving from Gemini: {e}")
+                    print(f"Error receiving from Gemini: {e}")
                 finally:
-                      print("Gemini connection closed (receive)")
-
+                    print("Gemini connection closed (receive)")
 
             # Start send loop
             send_task = asyncio.create_task(send_to_gemini())
@@ -110,16 +100,10 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
             receive_task = asyncio.create_task(receive_from_gemini())
             await asyncio.gather(send_task, receive_task)
 
-
     except Exception as e:
         print(f"Error in Gemini session: {e}")
     finally:
         print("Gemini session closed.")
-
-# async def main() -> None:
-#     async with websockets.serve(gemini_session_handler, "localhost", 9080):
-#         print("Running websocket server localhost:9080...")
-#         await asyncio.Future()  # Keep the server running indefinitely
 
 async def websocket_handler(request):
     """Handles incoming HTTP requests and upgrades them to WebSocket connections."""
