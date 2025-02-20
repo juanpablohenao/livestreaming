@@ -5,9 +5,8 @@ import os
 import websockets
 from google import genai
 import base64
-
-import os
 from dotenv import load_dotenv
+from aiohttp import web
 
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -117,12 +116,33 @@ async def gemini_session_handler(client_websocket: websockets.WebSocketServerPro
     finally:
         print("Gemini session closed.")
 
+# async def main() -> None:
+#     async with websockets.serve(gemini_session_handler, "localhost", 9080):
+#         print("Running websocket server localhost:9080...")
+#         await asyncio.Future()  # Keep the server running indefinitely
+
+async def websocket_handler(request):
+    """Handles incoming HTTP requests and upgrades them to WebSocket connections."""
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    await gemini_session_handler(ws)
+    return ws
+
+async def index(request):
+    """Handles HTTP requests and redirects to the WebSocket endpoint."""
+    return web.Response(text="WebSocket server is running. Connect via WebSocket.", content_type='text/html')
 
 async def main() -> None:
-    async with websockets.serve(gemini_session_handler, "localhost", 9080):
-        print("Running websocket server localhost:9080...")
-        await asyncio.Future()  # Keep the server running indefinitely
+    app = web.Application()
+    app.router.add_get('/', index)
+    app.router.add_get('/ws', websocket_handler)
 
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 9080)
+    print("Running websocket server on 0.0.0.0:9080...")
+    await site.start()
+    await asyncio.Future()  # Keep the server running indefinitely
 
 if __name__ == "__main__":
     asyncio.run(main())
