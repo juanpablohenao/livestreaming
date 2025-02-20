@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gemini20-realtime
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python main2.py"
+    envVars:
+      - key: GOOGLE_API_KEY
+        value: ${{ GOOGLE_API_KEY }}
+    dockerfilePath: ./Dockerfile
+    ports:
+      - port: 9080
+        protocol: tcp
